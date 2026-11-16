@@ -1,0 +1,7 @@
+{
+  "name": "build-journal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Turn rough notes and design files from a hardware build session into a journal entry.",
+  "engines": { "node": ">=20" }
+}
