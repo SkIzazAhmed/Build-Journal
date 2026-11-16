@@ -690,7 +690,10 @@ const ERR={
   rate_limited:"You've written a lot of entries in a short time. Wait a few minutes and try again.",
   busy:'The AI service is at its limit right now. Try again in a minute.',
   timeout:'That took too long. Try again, or send fewer files.',
-  not_configured:"This site's AI connection isn't set up yet. The site owner needs to add an API key.",
+  no_key:"No API key reached the server. Site owner: add the key in Vercel for the Production environment, then redeploy. Open /api/write to check.",
+  key_rejected:"The AI provider rejected this site's API key. Site owner: check the key in Vercel and redeploy.",
+  model_missing:"The AI model this site is set to use wasn't found. Site owner: set AI_MODEL in Vercel to a model your key can use.",
+  upstream:'The AI service returned an error. Try again in a minute.',
   too_large:'That was too much to send at once. Remove a file or a picture and try again.',
   empty:'Add some notes or at least one file first.',
   bad_code:"That access code isn't right. Check it and try again.",
@@ -746,7 +749,8 @@ async function generate(o){
     setBusy(false);
     const code=data&&data.error&&data.error.code;
     if(code==='code_required'||code==='bad_code'){$('#codefield').hidden=false;codeBox.focus()}
-    setStatus(ERR[code]||(res.status===413?ERR.too_large:"Couldn't write the entry. Try again."),'err');
+    const owner=['key_rejected','model_missing','upstream'].includes(code)&&data.error.message?' ('+data.error.message+')':'';
+    setStatus((ERR[code]||(res.status===413?ERR.too_large:"Couldn't write the entry. Try again."))+owner,'err');
     return;
   }
   const p=parseOut(data.text);

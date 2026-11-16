@@ -29,6 +29,7 @@ Entries are stored in each visitor's own browser (`localStorage`). There are no 
 1. Import this repository in Vercel as a new project. No framework or build settings are needed.
 2. In the project's **Settings → Environment Variables**, add one API key (see below).
 3. Deploy. If you add or change a variable later, redeploy for it to take effect.
+4. Open `https://your-site/api/write` in a browser. It shows whether a key reached the function and which provider and model are in use. It never shows the key.
 
 ### Environment variables
 

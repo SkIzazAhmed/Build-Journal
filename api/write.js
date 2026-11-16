@@ -180,7 +180,15 @@ module.exports = async function handler(req, res) {
   const send = (status, body) => { res.statusCode = status; res.setHeader('content-type', 'application/json'); res.setHeader('cache-control', 'no-store'); res.end(JSON.stringify(body)); };
   const fail = (status, code, message) => send(status, { error: { code, message } });
 
-  if (req.method !== 'POST') { res.setHeader('allow', 'POST'); return fail(405, 'method', 'Use POST.'); }
+  // Setup check for the site owner: open /api/write in a browser.
+  // It reports whether a key reached the function, never the key itself.
+  if (req.method === 'GET') {
+    const p = pickProvider(process.env);
+    return send(200, p
+      ? { ok: true, provider: p.name, model: p.model, accessCode: !!process.env.ACCESS_CODE }
+      : { ok: false, problem: 'No API key reached this deployment. Add GEMINI_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY for the Production environment, then redeploy.' });
+  }
+  if (req.method !== 'POST') { res.setHeader('allow', 'GET, POST'); return fail(405, 'method', 'Use POST.'); }
 
   // Only this site's own pages may call the function from a browser.
   const origin = req.headers.origin;
@@ -201,7 +209,7 @@ module.exports = async function handler(req, res) {
   }
 
   const provider = pickProvider(env);
-  if (!provider) return fail(500, 'not_configured', 'No AI key is set on the server.');
+  if (!provider) return fail(500, 'no_key', 'No AI key reached the server.');
 
   const ip = String(req.headers['x-forwarded-for'] || (req.socket && req.socket.remoteAddress) || 'unknown').split(',')[0].trim();
   if (limited(ip)) return fail(429, 'rate_limited', 'Too many entries in a short time.');
@@ -229,8 +237,11 @@ module.exports = async function handler(req, res) {
     if (e instanceof UpstreamError) {
       console.error('AI provider error', provider.name, provider.model, e.status, e.detail);
       if (e.status === 429) return fail(503, 'busy', 'The AI service is at its limit right now.');
-      if (e.status === 401 || e.status === 403 || e.status === 404) return fail(500, 'not_configured', 'The AI key or model on the server is not working.');
-      return fail(502, 'upstream', 'The AI service returned an error.');
+      const where = provider.name + ' answered ' + e.status;
+      const aboutKey = /api[ _-]?key|credential|unauthenticated|access_token/i.test(String(e.detail || ''));
+      if (e.status === 401 || e.status === 403 || (e.status === 400 && aboutKey)) return fail(500, 'key_rejected', where);
+      if (e.status === 404) return fail(500, 'model_missing', where + ' for model ' + provider.model);
+      return fail(502, 'upstream', where);
     }
     if (e && e.name === 'AbortError') return fail(504, 'timeout', 'The AI service took too long.');
     console.error('write failed', e);
