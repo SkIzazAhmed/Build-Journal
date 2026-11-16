@@ -125,6 +125,10 @@ input[type=text]:focus-visible,textarea:focus-visible,button:focus-visible,.drop
   .no b{font-size:1.05rem}
 }
 @media (prefers-reduced-motion:no-preference){.entry.fresh{transition:box-shadow .6s ease}}
+.voice summary{cursor:pointer;font-size:.92rem;font-weight:600}
+.voice summary:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.voice[open] summary{margin-bottom:10px}
+.voice textarea{min-height:96px}
 .foot{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direction:column;gap:10px}
 .foot p{margin:0;font-size:.85rem;color:var(--muted);max-width:80ch}
 [hidden]{display:none!important}
@@ -167,6 +171,14 @@ input[type=text]:focus-visible,textarea:focus-visible,button:focus-visible,.drop
         <input type="file" id="pick" multiple hidden>
         <ul class="files" id="files"></ul>
       </div>
+
+      <details class="voice" id="voicebox">
+        <summary>Make it sound like me</summary>
+        <div class="field">
+          <label for="voice">A sample of your own writing</label>
+          <textarea id="voice" maxlength="3000" placeholder="Paste a few lines you wrote yourself: a chat message, an old journal entry, anything. New entries follow the way you write. It is used for style only."></textarea>
+        </div>
+      </details>
 
       <label class="check-row" for="askfirst">
         <input type="checkbox" id="askfirst" checked>
@@ -666,7 +678,7 @@ async function buildPayload(o){
     project:proj,mode:S.mode,mayAsk:!!o.mayAsk,notes:$('#notes').value.trim(),
     earlier:last?{titles:mine.slice(-40).map(e=>e.title),lastTitle:last.title,lastBody:trunc(last.body,1200)}:null,
     files,changes,imageNames:imgs.map(f=>f.name),images:await Promise.all(imgs.map(f=>toBase64(f.blob))),
-    answers:o.answers||null,code:ls.get('bj.code')||''
+    answers:o.answers||null,voice:$('#voice').value.trim().slice(0,3000),code:ls.get('bj.code')||''
   };
 }
 function parseOut(text){
@@ -809,6 +821,9 @@ function start(){
   $('#project').value=ls.get('bj.project')||'';
   $('#notes').value=ls.get('bj.notes')||'';
   $('#code').value=ls.get('bj.code')||'';
+  $('#voice').value=ls.get('bj.voice')||'';
+  if($('#voice').value.trim())$('#voicebox').open=true;
+  $('#voice').addEventListener('input',()=>ls.set('bj.voice',$('#voice').value));
   setMode('session');renderBook();renderProjects();
 
   $('#project').addEventListener('input',()=>{ls.set('bj.project',$('#project').value);renderProjects();renderBook()});

@@ -12,6 +12,8 @@ You type what you did, drop in the files you worked on, and the page writes the 
 - Splits a long description of past work into one entry per session ("Catch up on past work").
 - Keeps a numbered journal per project, with edit, copy, delete, Markdown export, and backup and restore.
 
+- Writes to a list of rules against common AI writing habits (stock phrases, tidy closing lines, groups of three, em dashes and so on), adapted from [blader/humanizer](https://github.com/blader/humanizer) (MIT). Visitors can also paste a sample of their own writing so entries follow their style.
+
 Fusion `.f3d` / `.f3z` files and PDFs cannot be read. Export a STEP file or add a screenshot instead.
 
 ## How it is built
