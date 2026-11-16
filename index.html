@@ -185,6 +185,11 @@ input[type=text]:focus-visible,textarea:focus-visible,button:focus-visible,.drop
         <span>Ask me first if the why or the problems are missing</span>
       </label>
 
+      <label class="check-row" for="casual">
+        <input type="checkbox" id="casual" checked>
+        <span>Type it casually: all lowercase, with a few small slips</span>
+      </label>
+
       <div class="field" id="codefield" hidden>
         <label for="code">Access code</label>
         <input type="text" id="code" autocomplete="off" maxlength="100">
@@ -678,7 +683,7 @@ async function buildPayload(o){
     project:proj,mode:S.mode,mayAsk:!!o.mayAsk,notes:$('#notes').value.trim(),
     earlier:last?{titles:mine.slice(-40).map(e=>e.title),lastTitle:last.title,lastBody:trunc(last.body,1200)}:null,
     files,changes,imageNames:imgs.map(f=>f.name),images:await Promise.all(imgs.map(f=>toBase64(f.blob))),
-    answers:o.answers||null,voice:$('#voice').value.trim().slice(0,3000),code:ls.get('bj.code')||''
+    answers:o.answers||null,casual:$('#casual').checked,voice:$('#voice').value.trim().slice(0,3000),code:ls.get('bj.code')||''
   };
 }
 function parseOut(text){
@@ -824,6 +829,8 @@ function start(){
   $('#voice').value=ls.get('bj.voice')||'';
   if($('#voice').value.trim())$('#voicebox').open=true;
   $('#voice').addEventListener('input',()=>ls.set('bj.voice',$('#voice').value));
+  $('#casual').checked=ls.get('bj.casual')!=='off';
+  $('#casual').addEventListener('change',()=>ls.set('bj.casual',$('#casual').checked?'on':'off'));
   setMode('session');renderBook();renderProjects();
 
   $('#project').addEventListener('input',()=>{ls.set('bj.project',$('#project').value);renderProjects();renderBook()});

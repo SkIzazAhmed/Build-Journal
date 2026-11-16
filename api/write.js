@@ -114,6 +114,13 @@ function buildUserMessage(b) {
 
   const catchup = b.mode === 'catchup';
   const mayAsk = !!b.mayAsk && !answers;
+  if (b.casual) {
+    parts.push('', 'TYPING STYLE FOR THIS REQUEST',
+      '- Write everything in lowercase, including each title and the first word of every sentence. Keep capitals only in part numbers and acronyms such as ESP32, PID or GND.',
+      '- Type like someone writing fast who does not proofread. Put two or three small slips in each entry, the kind a real person makes: a missing apostrophe (dont, im, thats), a dropped comma, a missing "the" or "a", "alot", a stretched word like "sooo", one run-on sentence, a tense that is slightly off but still clear.',
+      '- Spread the slips out, never more than three in an entry, and keep every sentence easy to understand.',
+      '- Never put a slip in a part name, number, unit, pin name, measurement or file name. Those stay exactly right.');
+  }
   parts.push('');
   parts.push(catchup
     ? 'TASK: The notes describe past work that was never journaled. Split it into separate entries, one per work session, in the order things happened. At most 12 entries.'
@@ -136,6 +143,33 @@ function plainText(t) {
     .replace(/\s*[—–]\s*/g, ', ')
     .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/…/g, '...');
+}
+
+// "Casual typing" option: everything lowercase, apart from part numbers and acronyms.
+function lowerWords(s) {
+  return s.replace(/[A-Za-z][A-Za-z0-9']*/g, (tok, off, str) => {
+    if (/\d\s?$/.test(str.slice(Math.max(0, off - 2), off))) return tok;                  // units after a number: 5 V, 3000mAh
+    if (tok.length >= 2 && tok === tok.toUpperCase() && /[A-Z]/.test(tok)) return tok;   // ESP32, PID, GND, M3
+    return tok.toLowerCase();
+  });
+}
+// A light, random share of the slips fast typists make. Only ever touches common words.
+const SLIPS = [
+  [/\b(do|does|did|is|was|were|have|has|had|would|could|should|ca|wo|are)n't\b/g, '$1nt'],
+  [/\bi'm\b/g, 'im'], [/\bi've\b/g, 'ive'], [/\bthat's\b/g, 'thats'], [/\bit's\b/g, 'its'], [/\ba lot\b/g, 'alot'],
+];
+function slip(s) {
+  for (const [re, to] of SLIPS) s = s.replace(re, (...m) => (Math.random() < 0.5 ? m[0].replace(re, to) : m[0]));
+  return s;
+}
+function casualText(t) {
+  return String(t).split('\n').map((line) => {
+    if (/^\s*(MODE:|CHECK:|Q:)/.test(line)) return line;                       // labels and questions to the builder stay as they are
+    const img = /^(\s*\[IMAGE:\s*)(.*?)(\s-\s)(.*)\]\s*$/i.exec(line);
+    if (img) return img[1] + img[2] + img[3] + lowerWords(img[4]) + ']';       // keep the file name exactly
+    if (/^\s*\[IMAGE:/i.test(line)) return line;
+    return slip(lowerWords(line));
+  }).join('\n');
 }
 
 /* ---------- providers ---------- */
@@ -265,7 +299,8 @@ module.exports = async function handler(req, res) {
   try {
     const out = await PROVIDERS[provider.name](provider.key, provider.model, RULES, msg.text, images, maxTokens, ctl.signal);
     if (!out.text || !out.text.trim()) return fail(502, 'upstream', 'The AI model returned nothing.');
-    return send(200, { text: plainText(out.text), truncated: !!out.truncated });
+    const text = plainText(out.text);
+    return send(200, { text: body.casual ? casualText(text) : text, truncated: !!out.truncated });
   } catch (e) {
     if (e instanceof UpstreamError) {
       console.error('AI provider error', provider.name, provider.model, e.status, e.detail);
