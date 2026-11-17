@@ -44,7 +44,7 @@ Set one of the three keys.
 | `OPENAI_API_KEY` | one of these | OpenAI API key |
 | `AI_PROVIDER` | optional | `gemini`, `anthropic` or `openai`, if more than one key is set |
 | `AI_MODEL` | optional | Model ID to use instead of the default |
-| `AI_FALLBACK_MODEL` | optional | Model tried when the main one is overloaded. Gemini uses `gemini-3.5-flash-lite` by default; set `none` to turn it off |
+| `AI_FALLBACK_MODEL` | optional | Models tried in order when the main one is overloaded, comma separated. Gemini uses `gemini-3.5-flash-lite, gemini-2.5-flash` by default; set `none` to turn it off |
 | `ACCESS_CODE` | optional | If set, visitors must enter this code before they can write entries |
 
 Default models: `gemini-3.6-flash`, `claude-haiku-5-5`, `gpt-5-mini`. Model IDs change over time, so set `AI_MODEL` if a default stops working.

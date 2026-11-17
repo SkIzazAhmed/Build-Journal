@@ -6,7 +6,8 @@
 //   GEMINI_API_KEY | ANTHROPIC_API_KEY | OPENAI_API_KEY
 //   AI_PROVIDER   optional: "gemini" | "anthropic" | "openai" (if several keys are set)
 //   AI_MODEL      optional: overrides the default model for the provider
-//   AI_FALLBACK_MODEL optional: model to try when the main one is overloaded ("none" to turn off)
+//   AI_FALLBACK_MODEL optional: models to try when the main one is overloaded,
+//                     comma separated, in order ("none" to turn off)
 //   ACCESS_CODE   optional: if set, visitors must enter this code to write entries
 
 const DEFAULT_MODEL = {
@@ -16,7 +17,7 @@ const DEFAULT_MODEL = {
 };
 // Used only when the main model is overloaded or out of quota. It has its own quota.
 const FALLBACK_MODEL = {
-  gemini: 'gemini-3.5-flash-lite',
+  gemini: 'gemini-3.5-flash-lite, gemini-2.5-flash',
 };
 // Errors that mean "busy right now", worth trying again.
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
@@ -228,8 +229,9 @@ function pickProvider(env) {
   const name = keys[want] ? want : Object.keys(keys).find((k) => keys[k]);
   if (!name) return null;
   const model = env.AI_MODEL || DEFAULT_MODEL[name];
-  let fallback = env.AI_FALLBACK_MODEL || FALLBACK_MODEL[name] || '';
-  if (/^none$/i.test(fallback) || fallback === model) fallback = '';
+  const raw = env.AI_FALLBACK_MODEL || FALLBACK_MODEL[name] || '';
+  const fallback = /^\s*none\s*$/i.test(raw) ? []
+    : [...new Set(raw.split(',').map((m) => m.trim()).filter((m) => m && m !== model))];
   return { name, key: keys[name], model, fallback };
 }
 
@@ -262,7 +264,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'GET') {
     const p = pickProvider(process.env);
     return send(200, p
-      ? { ok: true, provider: p.name, model: p.model, fallback: p.fallback || null, accessCode: !!process.env.ACCESS_CODE }
+      ? { ok: true, provider: p.name, model: p.model, fallback: p.fallback, accessCode: !!process.env.ACCESS_CODE }
       : { ok: false, problem: 'No API key reached this deployment. Add GEMINI_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY for the Production environment, then redeploy.' });
   }
   if (req.method !== 'POST') { res.setHeader('allow', 'GET, POST'); return fail(405, 'method', 'Use POST.'); }
@@ -309,19 +311,24 @@ module.exports = async function handler(req, res) {
   const timer = setTimeout(() => ctl.abort(), 55000);
   // Try the main model, once more after a short pause, then the fallback model.
   // A later attempt starts only if enough time is left before the 60 s limit.
-  const plan = [provider.model, provider.model].concat(provider.fallback ? [provider.fallback] : []);
+  // With fallbacks, each model gets one try; without, the main model gets two.
+  const plan = provider.fallback.length ? [provider.model].concat(provider.fallback) : [provider.model, provider.model];
+  const tried = [];
   const call = async () => {
     let last;
     for (let i = 0; i < plan.length; i++) {
       if (i > 0) {
-        if (Date.now() - started > 35000) break;
-        if (plan[i] === plan[i - 1]) await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1000));
+        if (Date.now() - started > 42000) break;
+        await new Promise((r) => setTimeout(r, 800 + Math.random() * 700));
       }
       try {
         return await PROVIDERS[provider.name](provider.key, plan[i], RULES, msg.text, images, maxTokens, ctl.signal);
       } catch (e) {
         last = e;
-        if (!(e instanceof UpstreamError) || !RETRYABLE.has(e.status)) throw e;
+        tried.push(plan[i] + ' ' + (e.status || 'error'));
+        if (!(e instanceof UpstreamError)) throw e;
+        const missingFallback = e.status === 404 && plan[i] !== provider.model;   // a retired fallback name: skip it
+        if (!RETRYABLE.has(e.status) && !missingFallback) throw e;
         console.warn('AI provider busy, trying again', provider.name, plan[i], e.status);
       }
     }
@@ -335,7 +342,7 @@ module.exports = async function handler(req, res) {
   } catch (e) {
     if (e instanceof UpstreamError) {
       console.error('AI provider error', provider.name, provider.model, e.status, e.detail);
-      if (RETRYABLE.has(e.status)) return fail(503, 'busy', provider.name + ' answered ' + e.status);
+      if (RETRYABLE.has(e.status)) return fail(503, 'busy', 'tried ' + tried.join(', '));
       const where = provider.name + ' answered ' + e.status;
       const aboutKey = /api[ _-]?key|credential|unauthenticated|access_token/i.test(String(e.detail || ''));
       if (e.status === 401 || e.status === 403 || (e.status === 400 && aboutKey)) return fail(500, 'key_rejected', where);
