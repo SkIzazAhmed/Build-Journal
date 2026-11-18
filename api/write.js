@@ -36,7 +36,9 @@ const RULES = [
   'VOICE',
   '- First person, casual, like a student telling a friend what they did. Plain words, short sentences, relaxed capitalisation is fine. Never formal, never promotional, no headings inside an entry.',
   "- Keep the builder's own words, tone and phrasing wherever the notes have them. Do not tidy their voice into something neater.",
-  '- Length: follow the LENGTH line in the task. Reach it with real detail from the material (why, what went wrong, what was learnt), never with filler or invented facts. If the material truly cannot fill it, write less.',
+  '- Length: hit the LENGTH target in the task. It is a requirement, not a maximum. Get there with real detail from the material: the steps in the order they happened, why each choice was made, what went wrong and how it was noticed, what was learnt.',
+  '- When the notes are short, also explain in plain words how the parts, tools or ideas involved work, the way the builder now understands them, using accurate general knowledge. Describe what the attached files and pictures show in more detail.',
+  '- Never invent events, problems, numbers, quotes or feelings that the material does not give.',
   '- Never mention dates, clock times or hours spent.',
   '',
   // Adapted from the pattern list in blader/humanizer (MIT), rewritten for journal entries.
@@ -154,6 +156,28 @@ function buildUserMessage(b) {
 }
 
 // Typographic habits a model may still slip in, fixed in code so they never reach the page.
+// Words in each entry of a reply, counted the way the page counts them.
+function entryWordCounts(t) {
+  return String(t || '').replace(/\r/g, '').split(/^###\s+/m).slice(1).map((sec) => {
+    const body = sec.split('\n').slice(1)
+      .filter((l) => !/^\s*(\[IMAGE:|CHECK:|MODE:)/i.test(l))
+      .join(' ');
+    return body.split(/\s+/).filter((w) => /[a-z0-9]/i.test(w)).length;
+  });
+}
+// True when an entry came back well under the chosen length.
+function tooShort(t, words) {
+  const counts = entryWordCounts(t);
+  return counts.length > 0 && Math.min.apply(null, counts) < words * 0.8;
+}
+// A second request that hands the draft back and asks for the full length.
+function expandMessage(userText, draft, words) {
+  const counts = entryWordCounts(draft);
+  return userText + '\n\nYOUR FIRST DRAFT, which is too short (' + counts.join(', ') + ' words; the target is ' + words + ' per entry):\n<draft>\n' +
+    draft.trim() + '\n</draft>\n\nRewrite every entry so each one is between ' + Math.round(words * 0.9) + ' and ' + Math.round(words * 1.15) +
+    ' words. Keep the same titles and facts. Add length the way the rules allow: more of the steps, the reasons, the problems, what was learnt, and plain explanations of how the parts or ideas work. Do not ask questions. Use exactly the same output format, starting with MODE: ENTRIES.';
+}
+
 function plainText(t) {
   return String(t)
     .replace(/[“”]/g, '"').replace(/[‘’]/g, "'")
@@ -324,7 +348,7 @@ module.exports = async function handler(req, res) {
   // With fallbacks, each model gets one try; without, the main model gets two.
   const plan = provider.fallback.length ? [provider.model].concat(provider.fallback) : [provider.model, provider.model];
   const tried = [];
-  const call = async () => {
+  const call = async (userText) => {
     let last;
     for (let i = 0; i < plan.length; i++) {
       if (i > 0) {
@@ -332,7 +356,7 @@ module.exports = async function handler(req, res) {
         await new Promise((r) => setTimeout(r, 800 + Math.random() * 700));
       }
       try {
-        return await PROVIDERS[provider.name](provider.key, plan[i], RULES, msg.text, images, maxTokens, ctl.signal);
+        return await PROVIDERS[provider.name](provider.key, plan[i], RULES, userText, images, maxTokens, ctl.signal);
       } catch (e) {
         last = e;
         tried.push(plan[i] + ' ' + (e.status || 'error'));
@@ -345,8 +369,18 @@ module.exports = async function handler(req, res) {
     throw last;
   };
   try {
-    const out = await call();
+    let out = await call(msg.text);
     if (!out.text || !out.text.trim()) return fail(502, 'upstream', 'The AI model returned nothing.');
+    // One more pass if an entry came back well under the chosen length and there is time left.
+    if (!/^MODE:\s*QUESTIONS/im.test(out.text) && tooShort(out.text, msg.words) && Date.now() - started < 28000) {
+      try {
+        const longer = await call(expandMessage(msg.text, out.text, msg.words));
+        const before = entryWordCounts(out.text), after = entryWordCounts(longer.text);
+        if (after.length === before.length && after.reduce((a, b) => a + b, 0) > before.reduce((a, b) => a + b, 0)) out = longer;
+      } catch (e) {
+        console.warn('length pass failed, keeping the first draft', e && (e.status || e.name));
+      }
+    }
     const text = plainText(out.text);
     return send(200, { text: body.casual ? casualText(text) : text, truncated: !!out.truncated });
   } catch (e) {
