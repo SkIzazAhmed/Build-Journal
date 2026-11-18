@@ -10,6 +10,7 @@ You type what you did, drop in the files you worked on, and the page writes the 
 - Compares two versions of a KiCad file when one is marked as the older version, and describes what changed.
 - Asks up to three questions first if the notes leave out why something was done or what went wrong.
 - Splits a long description of past work into one entry per session ("Catch up on past work").
+- Lets you set the length: any number of words per entry from 30 to 600, with Short, Medium and Long presets.
 - Keeps a numbered journal per project, with edit, copy, delete, Markdown export, and backup and restore.
 
 - Writes to a list of rules against common AI writing habits (stock phrases, tidy closing lines, groups of three, em dashes and so on), adapted from [blader/humanizer](https://github.com/blader/humanizer) (MIT). Visitors can also paste a sample of their own writing so entries follow their style.

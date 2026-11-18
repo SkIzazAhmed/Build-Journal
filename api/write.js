@@ -26,6 +26,7 @@ const LIMIT = {
   project: 80, notes: 20000, fileCount: 20, fileDetail: 16000, filesTotal: 70000,
   changes: 6000, images: 4, imageB64: 1200000, answers: 3, answer: 2000,
   titles: 40, title: 160, lastBody: 1500, voice: 3000,
+  wordsMin: 30, wordsMax: 600, wordsDefault: 150,
   perTenMinutes: 8, perDay: 40,
 };
 
@@ -35,7 +36,7 @@ const RULES = [
   'VOICE',
   '- First person, casual, like a student telling a friend what they did. Plain words, short sentences, relaxed capitalisation is fine. Never formal, never promotional, no headings inside an entry.',
   "- Keep the builder's own words, tone and phrasing wherever the notes have them. Do not tidy their voice into something neater.",
-  '- 80 to 200 words per entry.',
+  '- Length: follow the LENGTH line in the task. Reach it with real detail from the material (why, what went wrong, what was learnt), never with filler or invented facts. If the material truly cannot fill it, write less.',
   '- Never mention dates, clock times or hours spent.',
   '',
   // Adapted from the pattern list in blader/humanizer (MIT), rewritten for journal entries.
@@ -82,6 +83,11 @@ const RULES = [
 
 const str = (v, max) => (typeof v === 'string' ? v : '').slice(0, max);
 
+function wordTarget(v) {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? Math.min(LIMIT.wordsMax, Math.max(LIMIT.wordsMin, n)) : LIMIT.wordsDefault;
+}
+
 function buildUserMessage(b) {
   const parts = [];
   parts.push('<project>' + (str(b.project, LIMIT.project).trim() || 'Untitled project') + '</project>');
@@ -121,6 +127,7 @@ function buildUserMessage(b) {
   }
 
   const catchup = b.mode === 'catchup';
+  const words = wordTarget(b.words);
   const mayAsk = !!b.mayAsk && !answers;
   if (b.casual) {
     parts.push('', 'TYPING STYLE FOR THIS REQUEST',
@@ -133,6 +140,8 @@ function buildUserMessage(b) {
   parts.push(catchup
     ? 'TASK: The notes describe past work that was never journaled. Split it into separate entries, one per work session, in the order things happened. At most 12 entries.'
     : 'TASK: Write one entry for this work session.');
+  parts.push('LENGTH: about ' + words + ' words per entry, between ' + Math.round(words * 0.85) + ' and ' + Math.round(words * 1.15) +
+    '. Count only the entry text, not the title, image lines or the CHECK line.');
   parts.push(mayAsk
     ? 'If the material leaves out why an approach was chosen or what went wrong, and that matters for the entry, ask instead of writing: at most 3 short questions. If the material is enough, write.'
     : 'Do not ask questions. Write with what you have and leave unknown things out.');
@@ -141,7 +150,7 @@ function buildUserMessage(b) {
   if (mayAsk) parts.push('Either\nMODE: QUESTIONS\nQ: first question\nQ: second question\nor');
   parts.push('MODE: ENTRIES\n### short plain title naming the phase of work\nthe entry text, one paragraph or list item per line\nCHECK: one question that tests whether the builder understands the main concept of this entry' +
     (catchup ? '\n### title of the next entry\n...' : ''));
-  return { text: parts.join('\n'), catchup };
+  return { text: parts.join('\n'), catchup, words };
 }
 
 // Typographic habits a model may still slip in, fixed in code so they never reach the page.
@@ -305,7 +314,8 @@ module.exports = async function handler(req, res) {
   }
 
   const msg = buildUserMessage(body);
-  const maxTokens = msg.catchup ? 8000 : 4000;
+  // Room for the entries plus the model's own reasoning, scaled to the chosen length.
+  const maxTokens = msg.catchup ? Math.min(20000, 6000 + msg.words * 20) : 4000 + msg.words * 4;
   const ctl = new AbortController();
   const started = Date.now();
   const timer = setTimeout(() => ctl.abort(), 55000);

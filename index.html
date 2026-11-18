@@ -49,12 +49,12 @@ h1 span{color:var(--amber)}
 @media (min-width:881px){.bench{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto}}
 .field{display:flex;flex-direction:column;gap:6px}
 label,.lab{font-size:.78rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-input[type=text],textarea{
+input[type=text],input[type=number],textarea{
   width:100%;font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);
   border-radius:6px;padding:10px 12px;
 }
 textarea{min-height:150px;resize:vertical;line-height:1.5}
-input[type=text]:focus-visible,textarea:focus-visible,button:focus-visible,.drop:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+input[type=text]:focus-visible,input[type=number]:focus-visible,textarea:focus-visible,button:focus-visible,.drop:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{font:inherit;font-size:.82rem;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:999px;padding:3px 10px;cursor:pointer}
 .chip[aria-pressed=true]{background:var(--ink);color:var(--sheet);border-color:var(--ink)}
@@ -125,6 +125,10 @@ input[type=text]:focus-visible,textarea:focus-visible,button:focus-visible,.drop
   .no b{font-size:1.05rem}
 }
 @media (prefers-reduced-motion:no-preference){.entry.fresh{transition:box-shadow .6s ease}}
+.wordrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.wordrow input{width:96px;padding:6px 10px;font-variant-numeric:tabular-nums}
+.hint{font-size:.8rem;color:var(--muted)}
+.wc{font-family:var(--mono);font-size:.72rem;color:var(--muted);margin-left:auto}
 .voice summary{cursor:pointer;font-size:.92rem;font-weight:600}
 .voice summary:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .voice[open] summary{margin-bottom:10px}
@@ -155,6 +159,15 @@ input[type=text]:focus-visible,textarea:focus-visible,button:focus-visible,.drop
           <button type="button" id="mode-session" aria-pressed="true">This session</button>
           <button type="button" id="mode-catchup" aria-pressed="false">Catch up on past work</button>
         </div>
+      </div>
+
+      <div class="field">
+        <label for="words">Words per entry</label>
+        <div class="wordrow">
+          <input type="number" id="words" min="30" max="600" step="10" value="150" inputmode="numeric">
+          <div class="chips" id="wordchips" role="group" aria-label="Length presets"></div>
+        </div>
+        <span class="hint" id="wordhint">Any number from 30 to 600. In catch-up mode it applies to each entry.</span>
       </div>
 
       <div class="field">
@@ -560,6 +573,7 @@ function entryCard(e,n){
       el('button',{type:'button',class:'mini',text:'Copy',onclick(ev){copyText(entryMd(e,n),ev.currentTarget)}}),
       el('button',{type:'button',class:'mini',text:'Edit',onclick(){S.editing=e.id;S.confirming=null;renderBook()}}),
       el('button',{type:'button',class:'mini',text:'Delete',onclick(){S.confirming=e.id;renderBook()}}));
+    acts.append(el('span',{class:'wc',text:countWords(e.body)+' words'}));
   }
   main.append(acts);
   return card;
@@ -660,6 +674,16 @@ function renderFiles(){
   });
 }
 
+/* ---------- length ---------- */
+const WORD_PRESETS=[['Short',80],['Medium',150],['Long',300]];
+function wordsValue(){const n=parseInt($('#words').value,10);return Number.isFinite(n)?Math.min(600,Math.max(30,n)):150}
+function countWords(t){return String(t||'').split('\n').filter(l=>!/^\s*\[IMAGE:/i.test(l)).join(' ').split(/\s+/).filter(w=>/[a-z0-9]/i.test(w)).length}
+function renderWordChips(){
+  const box=$('#wordchips');box.textContent='';const v=parseInt($('#words').value,10);
+  WORD_PRESETS.forEach(([name,n])=>box.append(el('button',{type:'button',class:'chip','aria-pressed':String(v===n),text:name+' '+n,
+    onclick(){$('#words').value=n;ls.set('bj.words',String(n));renderWordChips()}})));
+}
+
 /* ---------- request ---------- */
 async function buildPayload(o){
   const proj=currentProject()||'Untitled project';
@@ -683,7 +707,7 @@ async function buildPayload(o){
     project:proj,mode:S.mode,mayAsk:!!o.mayAsk,notes:$('#notes').value.trim(),
     earlier:last?{titles:mine.slice(-40).map(e=>e.title),lastTitle:last.title,lastBody:trunc(last.body,1200)}:null,
     files,changes,imageNames:imgs.map(f=>f.name),images:await Promise.all(imgs.map(f=>toBase64(f.blob))),
-    answers:o.answers||null,casual:$('#casual').checked,voice:$('#voice').value.trim().slice(0,3000),code:ls.get('bj.code')||''
+    answers:o.answers||null,words:wordsValue(),casual:$('#casual').checked,voice:$('#voice').value.trim().slice(0,3000),code:ls.get('bj.code')||''
   };
 }
 function parseOut(text){
@@ -829,6 +853,9 @@ function start(){
   $('#voice').value=ls.get('bj.voice')||'';
   if($('#voice').value.trim())$('#voicebox').open=true;
   $('#voice').addEventListener('input',()=>ls.set('bj.voice',$('#voice').value));
+  $('#words').value=ls.get('bj.words')||'150';renderWordChips();
+  $('#words').addEventListener('input',()=>{ls.set('bj.words',$('#words').value);renderWordChips()});
+  $('#words').addEventListener('change',()=>{$('#words').value=wordsValue();ls.set('bj.words',$('#words').value);renderWordChips()});
   $('#casual').checked=ls.get('bj.casual')!=='off';
   $('#casual').addEventListener('change',()=>ls.set('bj.casual',$('#casual').checked?'on':'off'));
   setMode('session');renderBook();renderProjects();
